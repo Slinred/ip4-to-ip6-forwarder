@@ -12,5 +12,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build and push the Docker image
+    - name: docker buildx setup
+      uses: docker/setup-buildx-action@v3.10.0
+    - name: Build and push the docker image
       run: ./build.sh --push
