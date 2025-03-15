@@ -1,0 +1,13 @@
+services:
+  ip4-to-ip6-forwarder:
+    container_name: ip4-to-ip6-forwarder
+    build:
+      context: ./..
+      dockerfile: docker/Dockerfile
+    environment:
+      - "IP6_TARGET_HOST=test.local"
+      # space seperated list of ip4_source_port,ip6_target_port ip4_source_port,ip6_target_port
+      # NOTE: Do not forgot to expose/publish the ip4_source ports of the container, as these will be the listening ports!
+      - "FORWARD_PORTS=80,80 443,443"
+    ports:
+      - 0.0.0.0:81:80 # Ensure the container can listen on IP4 and has IP6 access!
