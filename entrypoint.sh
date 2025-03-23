@@ -5,9 +5,22 @@ TUNNEL_PIDS=""
 UPDATE_DNS=0
 TARGET_IP=""
 
+if [ -z "$EXIT_TIMEOUT" ]; then
+    EXIT_TIMEOUT=30
+fi
+
 log()
 {
     echo "$(date) - $1"
+}
+
+exit_handler()
+{
+    log "Stopping 6tunnel processes..."
+    stop_port_forwards
+    log "Exiting with code $1 after $EXIT_TIMEOUT seconds..."
+    sleep $EXIT_TIMEOUT
+    exit $1
 }
 
 # Function to check for IPv6
@@ -22,14 +35,28 @@ is_ipv6()
 
 is_dns()
 {
-    echo "$IP6_TARGET_HOST" | perl -ne "print if '/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^[\w\d_-]+$/'"
+    echo "$IP6_TARGET_HOST" | perl -ne 'exit 0 if /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^[\w\d_-]+$/; exit 1'
+    return $?
+}
+
+is_reachable()
+{
+    log "Checking if $IP6_TARGET_HOST is reachable..."
+    ping -c 4 -6 "$IP6_TARGET_HOST" >/dev/null 2>&1
+    if [ "$?" -ne 0 ]; then
+        log "ERROR: $IP6_TARGET_HOST is not reachable!"
+        return 0
+    fi
+    
+    log "$IP6_TARGET_HOST is reachable!"
+    return 1
 }
 
 check_preconditions()
 {
     if [ -z "$IP6_TARGET_HOST" ]; then
         log "ERROR: IP6_TARGET_HOST not set! Please define IP6_TARGET_HOST as the target host to forward the IPv4 traffic!"
-        exit 1
+        exit_handler 1
     fi
 
     if is_ipv6; then
@@ -41,12 +68,16 @@ check_preconditions()
         resolve_target_ip
     else
         log "ERROR: $IP6_TARGET_HOST is neither a valid IPv6 address not a valid hostname or domain name!"
-        exit 1
+        exit_handler 1
+    fi
+
+    if is_reachable; then
+        exit_handler 1
     fi
 
     if [ -z "$FORWARD_PORTS" ]; then
         log "ERROR: FORWARD_PORTS not set! Please define a comma seperated list of ports to forward IPv4 traffic from to the same IPv6 ports on $IP6_TARGET_HOST!"
-        exit 1
+        exit_handler 1
     fi
 
     log "Forward ports: $FORWARD_PORTS"
@@ -55,12 +86,12 @@ check_preconditions()
 resolve_target_ip()
 {
     log "Resolving IPv6 address of '$IP6_TARGET_HOST'..."
-    NEW_TARGET_IP=$(nslookup -type=aaaa "$IP6_TARGET_HOST" | awk '/^Address: / { print $2; exit }')
+    NEW_TARGET_IP=$(ping -c 1 -6 "$IP6_TARGET_HOST" | perl -ne "print \$1 if /PING ${IP6_TARGET_HOST} \(([A-Fa-f0-9:]+)\)/;")
 
     if [ -z "$NEW_TARGET_IP" ]; then
         log "Failed to resolve IPv6 address!"
         stop_port_forwards
-        exit 1
+        exit_handler 1
     elif [ "$NEW_TARGET_IP" != "$TARGET_IP" ]; then
         log "IP address has changed from '$TARGET_IP' to '$NEW_TARGET_IP'!"
         TARGET_IP=$NEW_TARGET_IP
@@ -83,7 +114,7 @@ start_port_forwards()
         if [ -z "$TUNNEL_PID" ]; then
             log "Failed to start 6tunnel process for port $source_port!"
             stop_port_forwards
-            exit 1
+            exit_handler 1
         fi
         log "Started tunnel process with PID=$TUNNEL_PID!"
         TUNNEL_PIDS="$TUNNEL_PIDS $TUNNEL_PID"
@@ -121,3 +152,5 @@ while true; do
 done
 
 stop_port_forwards
+
+exit_handler 0

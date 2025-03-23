@@ -1,4 +1,4 @@
-name: Docker Image CI
+name: CI
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
 
 jobs:
 
-  build_and_push_docker_image:
+  build_docker_image:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -18,8 +18,8 @@ jobs:
         DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
       run: |
         echo $DOCKERHUB_TOKEN | docker login -u "$DOCKERHUB_LOGIN" --password-stdin
-    - name: Build and push the docker image
-      run: ./build.sh --push
+    - name: Build the docker image
+      run: ./build.sh
     - name: Clean up
       run: |
         docker logout
